@@ -15,7 +15,7 @@ use MT::Plugin;
 use MT::Template::Context;
 use MT::I18N qw( encode_text );
 
-our $VERSION = '0.031';
+our $VERSION = '0.032';
 
 my $plugin = new MT::Plugin::ThisIsGood({
     name            => "This is good for MT",
@@ -31,9 +31,20 @@ my $plugin = new MT::Plugin::ThisIsGood({
 });
 
 MT->add_plugin($plugin);
-MT::Template::Context->add_tag(ThisIsGood => \&_hdlr_this_is_good);
-MT->add_callback('CommentThrottleFilter', 1, $plugin, \&throttle_filter);
-MT->add_callback('MT::App::CMS::AppTemplateParam.edit_template', 9, $plugin, \&hdlr_tag_inserts); 
+sub init_registry {
+    my $plugin = shift;
+    $plugin->registry({
+        tags => {
+            function => {
+                'ThisIsGood' => \&_hdlr_this_is_good,
+            },
+        },
+        callbacks => {
+            'CommentThrottleFilter',
+                => \&throttle_filter,
+        },
+    });
+}
 
 sub _hdlr_this_is_good {
     my ($ctx, $args, $cond) = @_;
@@ -48,15 +59,20 @@ sub _hdlr_this_is_good {
 
     my @template = split(/\n/, $comment_template);
 
-    my $html = "<label for=\"comment-text\">"
+    my $html = "<label for=\"quick-comment-text\">"
                .$plugin->translate("Quick Comment:")
-               ."</label><select name=\"comment_template\" id=\"comment-text\"><option value=\"\">---</option>";
+               ."</label><select name=\"comment_template\" id=\"quick-comment-text\" onchange=\"doCommentPreview();\"><option value=\"\" selected=\"selected\">----</option>";
     foreach my $val (@template) {
         $html .= '<option value="'.$val.'">'.$val.'</option>';
     }
     $html .= '</select>';
 
+    if (substr(MT->version_number, 0, 3) >= 5.1) {
+        return $html;
+    }
+    else {
     return MT::I18N::encode_text($html, undef);
+    }
 }
 
 sub throttle_filter {
@@ -64,20 +80,8 @@ sub throttle_filter {
     my $q = $app->param;
     my $quick = $q->param('comment_template');
     my $original = $q->param('text');
-
-    $q->param(-name=>'text', -value=>'<strong>['.$quick.']</strong>'.$original) if $quick;
-}
-
-sub hdlr_tag_inserts { 
-    my ($eh, $app, $param, $tmpl) = @_;
-
-    $param->{tag_insert_loop} ||= [];
-
-    push @{$param->{tag_insert_loop}}, {
-        id => 'ThisIsGood_0',
-        label => $plugin->translate('Insert This is good'),
-        content => qq{<\$MTThisIsGood\$>}
-    };
+    $q->param(-name=>'text', -value=>'<strong>'.$quick.'</strong><br />'.$original) if $quick;
+    1;
 }
 
 1;
